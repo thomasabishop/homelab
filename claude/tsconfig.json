@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "generate.ts",
+    "services.ts",
+    "fonts.ts",
+    "fit-icons.ts"
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Homelab",
+  "description": "Only `id` and `name` are required; every other field is optional and may be null.",
+  "type": "object",
+  "definitions": {
+    "optString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "active",
+        "planned",
+        null
+      ]
+    },
+    "service": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "$ref": "#/definitions/optString"
+        },
+        "url": {
+          "$ref": "#/definitions/optString"
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        }
+      }
+    },
+    "guest": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "$ref": "#/definitions/optString"
+        },
+        "vmid": {
+          "type": [
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "ip": {
+          "$ref": "#/definitions/optString"
+        },
+        "hostname": {
+          "$ref": "#/definitions/optString"
+        },
+        "network": {
+          "$ref": "#/definitions/optString"
+        },
+        "description": {
+          "$ref": "#/definitions/optString"
+        },
+        "icon": {
+          "$ref": "#/definitions/optString"
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "services": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/service"
+          }
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "$ref": "#/definitions/optString"
+        },
+        "model": {
+          "$ref": "#/definitions/optString"
+        },
+        "os": {
+          "$ref": "#/definitions/optString"
+        },
+        "ip": {
+          "$ref": "#/definitions/optString"
+        },
+        "hostname": {
+          "$ref": "#/definitions/optString"
+        },
+        "network": {
+          "$ref": "#/definitions/optString"
+        },
+        "description": {
+          "$ref": "#/definitions/optString"
+        },
+        "icon": {
+          "$ref": "#/definitions/optString"
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "hardware": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/hardware"
+          }
+        },
+        "guests": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/guest"
+          }
+        },
+        "ports": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/port"
+          }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cidr": {
+          "$ref": "#/definitions/optString"
+        },
+        "domain": {
+          "$ref": "#/definitions/optString"
+        },
+        "color": {
+          "$ref": "#/definitions/optString"
+        },
+        "description": {
+          "$ref": "#/definitions/optString"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/definitions/optString"
+        },
+        "to": {
+          "$ref": "#/definitions/optString"
+        },
+        "fromPort": {
+          "$ref": "#/definitions/optString"
+        },
+        "toPort": {
+          "$ref": "#/definitions/optString"
+        },
+        "type": {
+          "$ref": "#/definitions/optString"
+        },
+        "cable": {
+          "$ref": "#/definitions/optString"
+        },
+        "speed": {
+          "$ref": "#/definitions/optString"
+        },
+        "label": {
+          "$ref": "#/definitions/optString"
+        },
+        "status": {
+          "$ref": "#/definitions/status"
+        }
+      }
+    },
+    "port": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "$ref": "#/definitions/optString"
+        },
+        "speed": {
+          "$ref": "#/definitions/optString"
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "wan",
+            "lan",
+            null
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "used",
+            "free",
+            "planned",
+            null
+          ]
+        },
+        "note": {
+          "$ref": "#/definitions/optString"
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/definitions/optString"
+        },
+        "detail": {
+          "$ref": "#/definitions/optString"
+        }
+      }
+    }
+  },
+  "properties": {
+    "meta": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "#/definitions/optString"
+        },
+        "updated": {
+          "$ref": "#/definitions/optString"
+        }
+      }
+    },
+    "networks": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/definitions/network"
+      }
+    },
+    "devices": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/definitions/device"
+      }
+    },
+    "links": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/definitions/link"
+      }
+    }
+  }
+}

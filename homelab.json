@@ -1,0 +1,96 @@
+{
+  "meta": {
+    "title": "Homelab",
+    "updated": "2026-11-14"
+  },
+
+  "networks": [
+    {
+      "id": "lan",
+      "name": "LAN",
+      "cidr": "192.168.178.0/24",
+      "domain": "home.arpa"
+    }
+  ],
+
+  "devices": [
+    {
+      "id": "internet",
+      "name": "Internet",
+      "role": "internet",
+      "icon": "internet"
+    },
+    {
+      "id": "fritzbox",
+      "name": "Fritz!Box",
+      "role": "router",
+      "model": "FRITZ!Box 7530 AX",
+      "ip": "192.168.178.1",
+      "icon": "fritz_logo",
+      "ports": [
+        { "id": "lan1", "name": "LAN 1", "speed": "1G", "mode": "wan", "note": "Internet" },
+        { "id": "lan2", "name": "LAN 2", "speed": "1G", "status": "used" },
+        { "id": "lan3", "name": "LAN 3", "speed": "1G", "status": "used" },
+        { "id": "lan4", "name": "LAN 4", "speed": "1G" }
+      ]
+    },
+    {
+      "id": "switch",
+      "name": "Switch",
+      "role": "switch",
+      "icon": "switch",
+      "ports": [{ "id": "1" }, { "id": "2" }, { "id": "3" }, { "id": "4" }, { "id": "5" }]
+    },
+    {
+      "id": "pve1",
+      "name": "pve1",
+      "role": "server",
+      "model": "ThinkPad X220",
+      "os": "Proxmox VE",
+      "icon": "proxmox-light",
+      "ip": "192.168.178.68",
+      "hostname": "pve1.home.arpa",
+      "hardware": [
+        { "kind": "CPU", "name": "Intel Core i5-2520M", "detail": "2 cores · 4 threads · 2.5 GHz" },
+        { "kind": "Memory", "name": "8 GB DDR3", "detail": "7.6 GiB usable" },
+        { "kind": "SSD", "name": "128 GB SATA SSD", "detail": "HX128GSSDSATA3 · sda" }
+      ],
+      "guests": [
+        {
+          "id": "openhamclock",
+          "name": "OpenHamClock",
+          "type": "lxc",
+          "ip": "192.168.178.61",
+          "services": [{ "name": "OpenHamClock", "icon": null }]
+        },
+        {
+          "id": "wavelog",
+          "name": "Wavelog",
+          "type": "lxc",
+          "ip": "192.168.178.70",
+          "services": [{ "name": "Wavelog", "icon": "wavelog" }]
+        },
+        {
+          "id": "pihole",
+          "name": "Pi-hole",
+          "type": "lxc",
+          "ip": "192.168.178.73",
+          "services": [{ "name": "Pi-hole", "icon": "pi-hole" }]
+        },
+        {
+          "id": "radicale",
+          "name": "Radicale",
+          "type": "lxc",
+          "ip": "192.168.178.66",
+          "services": [{ "name": "Radicale", "icon": "radicale" }]
+        }
+      ]
+    }
+  ],
+
+  "links": [
+    { "from": "internet", "to": "fritzbox", "toPort": "lan1", "type": "wan", "cable": "fibre" },
+    { "from": "fritzbox", "fromPort": "lan4", "to": "switch", "cable": "Cat6a", "speed": "1G" },
+    { "from": "switch", "fromPort": "1", "to": "pve1" }
+  ]
+}
