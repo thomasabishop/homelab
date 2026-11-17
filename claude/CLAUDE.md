@@ -5,13 +5,18 @@ source of truth. From it, `claude/generate.ts` produces the outputs, which
 also live in the root:
 
 - `homelab.svg`: the network diagram
+- `homelab_<timestamp>.png`: a high-res PNG (3×, via ImageMagick's `magick`)
+  of the current diagram, named after its `updated` stamp. The generator
+  renders it on every run where the SVG changed or the PNG is missing; there
+  is only ever one in the root.
 - `services/<service>/readme.md`: one at-a-glance summary per service
-- `history/homelab_<timestamp>.svg`: every earlier version of the diagram,
-  named after its `updated` stamp (`-2`, `-3` … for clashes). Never edit or
-  delete these.
+- `history/homelab_<timestamp>.png`: every earlier version of the diagram,
+  named after its `updated` stamp (`-2`, `-3` … for clashes). Older entries
+  are `.svg` (from before the switch to PNG). Never edit or delete these.
 
-When the diagram changes (anything except the stamp), the generator copies
-the old `homelab.svg` into `history/` and sets `meta.updated` in
+When the diagram changes (anything except the stamp), the generator moves
+the old root PNG into `history/` (rendering it from the old `homelab.svg` if
+it's missing; history only gets PNGs now) and sets `meta.updated` in
 `homelab.json` to the current local time (`YYYY-MM-DD HH:MM`). Don't set
 `updated` by hand.
 

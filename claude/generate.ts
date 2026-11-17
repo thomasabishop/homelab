@@ -4,7 +4,8 @@
 //
 //   node generate.ts [input.json] [output.svg]   (readmes go to services/ next to the svg)
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
@@ -965,15 +966,35 @@ const render = (updated: Opt<string>) => [
 ].join("\n") + "\n";
 
 // ---------------------------------------------------------------- history
-// If the diagram changed (ignoring the stamp), keep the old one in history/,
-// stamp meta.updated in homelab.json with the current time, then write.
+// If the diagram changed (ignoring the stamp), keep the old one in history/
+// as a PNG, stamp meta.updated in homelab.json with the current time, then
+// write. Next to the SVG sits a high-res PNG named after the stamp
+// (homelab_<stamp>.png); when the diagram changes it moves into history/.
 // An unchanged diagram leaves every file alone, so reruns are identical.
 
-const HISTORY_DIR = join(dirname(OUTPUT), "history");
+const OUT_DIR = dirname(OUTPUT);
+const HISTORY_DIR = join(OUT_DIR, "history");
+const OUT_BASE = basename(OUTPUT, ".svg");
+const PNG_DENSITY = 288; // 3× the SVG's pixel size
 const stripStamp = (s: string) => s.replace(/<g id="updated">.*?<\/g>\n/, "");
 const pad = (n: number) => String(n).padStart(2, "0");
 const now = new Date();
 const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+const slug = (u: Opt<string>) => (has(u) ? u.trim().replace(/[ :]+/g, (m) => (m.includes(" ") ? "_" : "")) : "undated");
+const pngFor = (u: Opt<string>) => join(OUT_DIR, `${OUT_BASE}_${slug(u)}.png`);
+const isOutPng = (f: string) => f.startsWith(`${OUT_BASE}_`) && f.endsWith(".png");
+
+// Renders an SVG file to a PNG with
+// ImageMagick, without date chunks so the bytes depend only on the image.
+function toPng(svgFile: string, png: string): boolean {
+  try {
+    execFileSync("magick", ["-density", String(PNG_DENSITY), svgFile, "-strip", "-define", "png:exclude-chunks=date,time", png], { stdio: ["ignore", "ignore", "pipe"] });
+    return true;
+  } catch (e) {
+    warn(`couldn't render ${relative(OUT_DIR, png)} (is ImageMagick's magick installed?): ${String((e as Error).message).split("\n")[0]}`);
+    return false;
+  }
+}
 
 let updated = lab.meta?.updated;
 const prev = existsSync(OUTPUT) ? readFileSync(OUTPUT, "utf8") : null;
@@ -981,11 +1002,15 @@ let svg = render(updated);
 if (prev === null || stripStamp(prev) !== stripStamp(svg)) {
   if (prev !== null) {
     mkdirSync(HISTORY_DIR, { recursive: true });
-    const base = `homelab_${has(updated) ? updated.trim().replace(/[ :]+/g, (m) => (m.includes(" ") ? "_" : "")) : "undated"}`;
-    let file = join(HISTORY_DIR, `${base}.svg`);
-    for (let i = 2; existsSync(file); i++) file = join(HISTORY_DIR, `${base}-${i}.svg`);
-    writeFileSync(file, prev);
-    console.log(`✓ diagram changed: previous version kept as ${relative(dirname(OUTPUT), file)}`);
+    const base = `${OUT_BASE}_${slug(updated)}`;
+    const taken = (b: string) => existsSync(join(HISTORY_DIR, `${b}.png`)) || existsSync(join(HISTORY_DIR, `${b}.svg`));
+    let name = base;
+    for (let i = 2; taken(name); i++) name = `${base}-${i}`;
+    const file = join(HISTORY_DIR, `${name}.png`);
+    // Reuse the PNG already rendered for the old diagram; otherwise render it now.
+    const oldPng = pngFor(updated);
+    const kept = existsSync(oldPng) ? (renameSync(oldPng, file), true) : toPng(OUTPUT, file);
+    if (kept) console.log(`✓ diagram changed: previous version kept as ${relative(OUT_DIR, file)}`);
   }
   const raw = readFileSync(INPUT, "utf8");
   const re = /("updated"\s*:\s*)("[^"]*"|null)/;
@@ -1000,6 +1025,13 @@ if (prev === null || stripStamp(prev) !== stripStamp(svg)) {
 const unchanged = svg === prev;
 if (!unchanged) writeFileSync(OUTPUT, svg);
 
+// Exactly one PNG beside the SVG: the current one. Render it if the SVG changed
+// or it's missing; drop stale ones (e.g. from a hand edit to meta.updated).
+const png = pngFor(updated);
+const pngFresh = unchanged && existsSync(png);
+for (const f of readdirSync(OUT_DIR)) if (isOutPng(f) && join(OUT_DIR, f) !== png) unlinkSync(join(OUT_DIR, f));
+const pngWritten = !pngFresh && toPng(OUTPUT, png);
+
 writeServiceReadmes({
   devices, links, warn, servicesDir: SERVICES_DIR,
   network: (ip) => networkOf(ip)?.net,
@@ -1013,3 +1045,5 @@ if (warnings.length) {
   console.log("✓ all links and IPs resolve to a device and network");
 }
 console.log(unchanged ? `✓ ${OUTPUT} unchanged` : `✓ wrote ${OUTPUT} (${W}×${H}), stamped ${updated}`);
+if (pngWritten) console.log(`✓ wrote ${png} (${Math.round((W * PNG_DENSITY) / 96)}×${Math.round((H * PNG_DENSITY) / 96)})`);
+else if (pngFresh) console.log(`✓ ${png} unchanged`);
