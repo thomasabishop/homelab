@@ -2,8 +2,9 @@
 # Regenerates homelab.svg and services/*/readme.md from homelab.json.
 # Run from anywhere:  ./claude/generate.sh
 #
-# New services get a readme with a TODO description/crib; ask Claude to
-# "generate updated diagram and service summaries" to have those written.
+# New services get a readme with a TODO description/crib to fill in by hand.
+# If the diagram changed, the old one goes to history/ and meta.updated in
+# homelab.json is stamped with the current time.
 set -euo pipefail
 cd "$(dirname "$0")"
 

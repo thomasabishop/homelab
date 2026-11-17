@@ -15,6 +15,7 @@ export interface ReadmeContext {
   devices: Device[];
   links: Link[];
   network: (ip: string) => { name: string; cidr?: string | null } | undefined;
+  dnsFor: (ip: string) => string[]; // names of networks this IP is the DNS server for
   warn: (msg: string) => void;
   servicesDir: string;
 }
@@ -53,14 +54,19 @@ function generatedBlock(ctx: ReadmeContext, host: Device, guest: Guest, service:
   rows.push(["Runs in", `${kind} ${guest.vmid ?? ""} \`${guest.id}\``.replace(/\s+/g, " ")]);
   if (has(guest.ip)) {
     rows.push(["IP", `\`${guest.ip}\``]);
+    if (has(guest.hostname)) rows.push(["Hostname", `\`${guest.hostname}\``]);
     const net = ctx.network(guest.ip);
     if (net) rows.push(["Network", `${net.name}${has(net.cidr) ? ` · \`${net.cidr}\`` : ""}`]);
+    const dns = ctx.dnsFor(guest.ip);
+    if (dns.length) rows.push(["DNS", `DNS server for ${dns.join(", ")}`]);
   }
   const hostBits = [host.model, host.os, has(host.ip) ? `\`${host.ip}\`` : null].filter(has);
   rows.push(["Host", `${host.name}${hostBits.length ? ` (${hostBits.join(", ")})` : ""}`]);
   const linked = ctx.links.some((l) => l.from === guest.id || l.to === guest.id);
   const path = pathTo(ctx, linked ? guest.id : host.id, names);
   if (path) rows.push(["Path", [...path, ...(linked ? [] : [`${guest.name} (${kind})`])].join(" → ")]);
+  const ports = (service.ports ?? []).filter((p) => Number.isInteger(p.port));
+  if (ports.length) rows.push(["Ports", ports.map((p) => `\`${p.port}\`${has(p.label) ? ` ${p.label}` : ""}${has(p.protocol) ? ` (${p.protocol})` : ""}`).join(" · ")]);
   const neighbours = (guest.services ?? []).filter((s) => s !== service && has(s.name)).map((s) => s.name);
   if (neighbours.length) rows.push(["Shares the guest with", neighbours.join(", ")]);
   return [START, "", "| | |", "|---|---|", ...rows.map(([k, v]) => `| **${k}** | ${v} |`), "", END].join("\n");
@@ -72,7 +78,7 @@ ${"{BLOCK}"}
 
 ## What it does
 
-TODO: one sentence on what the software does. (Claude fills this in when asked to "generate updated diagram and service summaries".)
+TODO: one sentence on what the software does.
 
 ## Crib
 

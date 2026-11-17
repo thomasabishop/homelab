@@ -4,8 +4,8 @@
 //
 //   node generate.ts [input.json] [output.svg]   (readmes go to services/ next to the svg)
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
 import { writeServiceReadmes } from "./services.ts";
@@ -23,7 +23,11 @@ useFontDir(join(ROOT, "fonts"));
 
 type Opt<T> = T | null | undefined;
 
-export interface Service { name: string; icon?: Opt<string>; status?: Opt<string> }
+export interface ServicePort { port: number; label?: Opt<string>; protocol?: Opt<string> }
+export interface Service { name: string; icon?: Opt<string>; status?: Opt<string>; ports?: Opt<ServicePort[]> }
+// ":3000 :3001", at most three ports and then "+n".
+const portsLabel = (ports: ServicePort[]) =>
+  [...ports.slice(0, 3).map((p) => `:${p.port}`), ...(ports.length > 3 ? [`+${ports.length - 3}`] : [])].join(" ");
 export interface Guest {
   id: string; name: string; type?: Opt<string>; vmid?: Opt<string | number>;
   ip?: Opt<string>; hostname?: Opt<string>; network?: Opt<string>;
@@ -39,12 +43,12 @@ export interface Port {
 // kind: "cpu", "memory", "ssd", "hdd", "nvme", "nic", … (shown as the tile's label).
 export interface Hardware { name: string; kind?: Opt<string>; detail?: Opt<string> }
 export interface Device {
-  id: string; name: string; role?: Opt<string>; model?: Opt<string>; os?: Opt<string>;
+  id: string; name: string; role?: Opt<string>; model?: Opt<string>; os?: Opt<string>; osIcon?: Opt<string>;
   ip?: Opt<string>; hostname?: Opt<string>; network?: Opt<string>;
   description?: Opt<string>; icon?: Opt<string>; status?: Opt<string>;
   ports?: Opt<Port[]>; hardware?: Opt<Hardware[]>; guests?: Opt<Guest[]>;
 }
-interface Network { id: string; name: string; cidr?: Opt<string>; domain?: Opt<string>; color?: Opt<string>; description?: Opt<string> }
+interface Network { id: string; name: string; cidr?: Opt<string>; domain?: Opt<string>; dns?: Opt<string | string[]>; color?: Opt<string>; description?: Opt<string> }
 export interface Link {
   from?: Opt<string>; to?: Opt<string>; fromPort?: Opt<string>; toPort?: Opt<string>;
   type?: Opt<string>; cable?: Opt<string>; speed?: Opt<string>; label?: Opt<string>; status?: Opt<string>;
@@ -73,6 +77,9 @@ const C = {
   host: "#79a8e0",
   lan: "#c9d1d9",
   wan: "#e5534b",
+  dns: "#f85149", // DNS pill: red so it stands out
+  cloudFill: "#1a2332",
+  cloudStroke: "#3a4a60",
   section: "#d4a373",
 };
 const ROLE_COLOR: Record<string, string> = {
@@ -143,7 +150,6 @@ function parseCidr(cidr: string): { base: number; mask: number } | null {
   const mask = n === 0 ? 0 : (0xffffffff << (32 - n)) >>> 0;
   return { base: (base & mask) >>> 0, mask };
 }
-const lastOctet = (ip: string) => "." + ip.trim().split(".").pop();
 
 // ---------------------------------------------------------------- load + validate
 
@@ -190,6 +196,7 @@ const netInfo = networks.map((n, i) => {
   return { net: n, parsed, color: has(n.color) ? n.color : NET_PALETTE[i % NET_PALETTE.length] };
 });
 const netById = new Map(netInfo.map((n) => [n.net.id, n]));
+type NetInfo = (typeof netInfo)[number];
 function networkOf(ip: Opt<string>) {
   const v = has(ip) ? parseIp(ip) : null;
   if (v === null) return undefined;
@@ -218,6 +225,30 @@ const ipColor = (ip: string) => networkOf(ip)?.color ?? NET_PALETTE[0];
     for (const g of d.guests ?? []) check(`guest "${g.id}"`, g.ip, g.network ?? d.network);
   }
 }
+
+// DNS servers: the IPs each network hands its clients. Ones inside the network
+// must belong to a device or guest; outside ones (e.g. 1.1.1.1) are fine.
+const dnsOf = (n: Network): string[] =>
+  (Array.isArray(n.dns) ? n.dns : [n.dns]).filter(has).map((ip) => ip.trim());
+const dnsFor = new Map<string, NetInfo[]>(); // IP -> networks it serves DNS for
+{
+  const owned = new Set(devices.flatMap((d) => [d.ip, ...(d.guests ?? []).map((g) => g.ip)]).filter(has));
+  for (const n of netInfo) {
+    for (const ip of dnsOf(n.net)) {
+      const v = parseIp(ip);
+      if (v === null) { warn(`network "${n.net.id}": DNS "${ip}" is not a valid IPv4 address`); continue; }
+      const inside = n.parsed && ((v & n.parsed.mask) >>> 0) === n.parsed.base;
+      if (inside && !owned.has(ip)) warn(`network "${n.net.id}": DNS ${ip} is not the IP of any device or guest`);
+      dnsFor.set(ip, [...(dnsFor.get(ip) ?? []), n]);
+    }
+  }
+}
+
+// A link takes the colour of the network its ends sit on (WAN links are red).
+const ipOfId = (id: string) => deviceById.get(id)?.ip ?? guestOwner.get(id)?.guests?.find((g) => g.id === id)?.ip;
+const isWanLink = (l: Link) => (l.type ?? "").toLowerCase() === "wan";
+const linkNet = (l: Link) => [l.to, l.from].filter(has).map((id) => networkOf(ipOfId(id))).find(Boolean);
+const linkColor = (l: Link) => (isWanLink(l) ? C.wan : linkNet(l)?.color ?? C.lan);
 
 // Link checks: endpoints must name a device or guest, and ports must exist on it.
 const validLinks: Link[] = [];
@@ -413,10 +444,10 @@ function portState(d: Device, p: Port): { color: string; fill: string; caption: 
   if (link) {
     const other = link.from === d.id ? link.to! : link.from!;
     const name = deviceById.get(other)?.name ?? guestOwner.get(other)?.guests?.find((g) => g.id === other)?.name ?? other;
-    const color = wan ? C.wan : C.lan;
-    return { color, fill: tint(color, 0.12), caption: has(p.note) ? p.note : name, planned };
+    const color = wan ? C.wan : linkColor(link);
+    return { color, fill: tint(color, 0.3), caption: has(p.note) ? p.note : name, planned };
   }
-  if (wan) return { color: C.wan, fill: tint(C.wan, 0.12), caption: has(p.note) ? p.note : "WAN", planned };
+  if (wan) return { color: C.wan, fill: tint(C.wan, 0.3), caption: has(p.note) ? p.note : "WAN", planned };
   if (p.status === "used") return { color: C.dim, fill: tint(C.dim, 0.18), caption: has(p.note) ? p.note : "in use", planned };
   // Only say "free" when the JSON says so; an unknown port just shows its name.
   const caption = has(p.note) ? p.note : planned ? "planned" : p.status === "free" ? "free" : "";
@@ -472,17 +503,20 @@ function deviceCard(d: Device, b: Box): string {
 // ---------------------------------------------------------------- internet cloud
 
 function cloud(d: Device, cx: number, top: number): { svg: string; box: Box } {
-  const cy = top + 70;
-  const p = (dx: number, dy: number) => `${r1(cx + dx)} ${r1(cy + dy)}`;
-  const d_ = `M${p(-110, 45)} A34 34 0 0 1 ${p(-92, -12)} A44 44 0 0 1 ${p(-20, -52)} A54 54 0 0 1 ${p(80, -18)} A34 34 0 0 1 ${p(110, 45)} Z`;
+  // A puffy, closed cloud: lobes all round and a rounded bottom. Its outline is
+  // the union of the shapes, drawn as a wide stroke under a borderless fill.
+  const cy = top + 78; // shape spans cy-76 .. cy+50 (= top+2 .. top+CLOUD_H)
+  const shapes = (attrs: string) =>
+    `<rect x="${r1(cx - 100)}" y="${r1(cy + 6)}" width="200" height="44" rx="22" ${attrs}/>` +
+    ([[-98, 22, 28], [-58, -10, 36], [5, -28, 48], [62, -10, 38], [98, 20, 30]] as const)
+      .map(([dx, dy, r]) => `<circle cx="${r1(cx + dx)}" cy="${r1(cy + dy)}" r="${r}" ${attrs}/>`).join("");
   const planned = isPlanned(d);
-  const iconFileName = iconFile(d.icon, `device "${d.id}"`);
   const sub = has(d.description) ? d.description : has(d.model) ? d.model : "";
   const svg =
-    `<path d="${d_}" fill="${C.card}" stroke="${roleColor(d)}" stroke-width="1.3"${planned ? ` stroke-dasharray="6 4"` : ""}/>` +
-    (iconFileName ? useIcon(iconFileName, cx - 13, cy - 44, 26) : "") +
-    text(cx, cy + 8, d.name, { size: 20, weight: 600, anchor: "middle", max: 190 }) +
-    (sub ? text(cx, cy + 27, sub, { size: 11, fill: C.dim, anchor: "middle", max: 190 }) : "");
+    `<g>${shapes(`fill="${C.cloudStroke}" stroke="${C.cloudStroke}" stroke-width="4"`)}</g>` +
+    `<g>${shapes(`fill="${C.cloudFill}"`)}</g>` +
+    text(cx, cy + (sub ? 2 : 10), d.name, { size: 22, weight: 600, anchor: "middle", max: 200 }) +
+    (sub ? text(cx, cy + 24, sub, { size: 11, fill: C.dim, anchor: "middle", max: 200 }) : "");
   return { svg: dimmed(planned, svg), box: { x: cx - CLOUD_HALF_W, y: top, w: 2 * CLOUD_HALF_W, h: CLOUD_H } };
 }
 
@@ -495,10 +529,20 @@ const SERVICE_ROW = 18;
 
 const guestKind = (g: Guest) => (has(g.type) ? g.type.toLowerCase() : "other");
 const guestServices = (g: Guest) => (g.services ?? []).filter((s) => has(s.name));
+// Guest tiles are too narrow for "IP · hostname", so the hostname gets its own line.
+const HOST_ROW = 15;
+const hostRowH = (g: Guest) => (has(g.ip) && has(g.hostname) ? HOST_ROW : 0);
 const guestHeight = (g: Guest) => {
   const n = guestServices(g).length;
-  return GUEST_BASE_H + (n > 1 ? n * SERVICE_ROW + 6 : 0);
+  return GUEST_BASE_H + hostRowH(g) + (n > 1 ? n * SERVICE_ROW + 6 : 0);
 };
+
+// Small rounded label, e.g. the DNS marker on a guest. x/y = top-left.
+const PILL_H = 15;
+const pillWidth = (label: string) => textWidth(label, 9, false, 700) + 12;
+const pill = (x: number, y: number, label: string, color: string) =>
+  `<rect x="${r1(x)}" y="${r1(y)}" width="${r1(pillWidth(label))}" height="${PILL_H}" rx="4" fill="${tint(color, 0.14)}" stroke="${color}" stroke-width="1"/>` +
+  text(x + 6, y + 11, label, { size: 9, weight: 700, fill: color });
 
 // parentPlanned: the server is already dimmed, so don't dim the guest a second time.
 function guestCard(g: Guest, b: Box, parentPlanned: boolean): string {
@@ -506,30 +550,64 @@ function guestCard(g: Guest, b: Box, parentPlanned: boolean): string {
   const kind = guestKind(g);
   const services = guestServices(g);
   const multi = services.length > 1;
-  const textX = b.x + 50;
+  const GUEST_ICON = 40;
+  const textX = b.x + 12 + GUEST_ICON + 10;
+  const textW = b.w - (textX - b.x) - 12; // room for text right of the icon
   const right = b.x + b.w - 12;
-  const rightW = (has(g.ip) ? 40 : 0) + 6;
+  // Top right: the service's ports, one per line (name row, then IP row). With
+  // more than one, each gets its label in small faint text before the number.
+  // (With several services, each service row shows its own ports instead.)
+  const ports = multi ? [] : (services[0]?.ports ?? []).filter((p) => Number.isInteger(p.port));
+  const labelled = ports.length > 1;
+  const portNum = (i: number) => `:${ports[i].port}${i === 1 && ports.length > 2 ? ` +${ports.length - 2}` : ""}`;
+  const portLabelOf = (i: number) => (labelled && has(ports[i].label) ? ports[i].label! : "");
+  const portLineW = (i: number, withLabel: boolean) =>
+    textWidth(portNum(i), 10, true) + (withLabel && portLabelOf(i) ? textWidth(portLabelOf(i), 8.5) + 4 : 0);
+  const portLine = (i: number, y: number, withLabel: boolean) => {
+    const numW = textWidth(portNum(i), 10, true);
+    return text(right, y, portNum(i), { size: 10, mono: true, fill: C.dim, anchor: "end" }) +
+      (withLabel && portLabelOf(i) ? text(right - numW - 4, y, portLabelOf(i), { size: 8.5, fill: C.faint, anchor: "end" }) : "");
+  };
+  const rightW = ports.length ? portLineW(0, true) + 6 : 0;
   const parts: string[] = [roundRect(b, C.cardInner, C.border, 8, planned, 1)];
-  parts.push(icon([g.icon, ...services.map((s) => s.icon)], `guest "${g.id}"`, kind, b.x + 12, b.y + 13, 28, GUEST_COLOR[kind] ?? C.dim, g.name));
-  parts.push(text(textX, b.y + 24, g.name, { size: 13, weight: 600, max: b.w - 62 - rightW - 30 }));
+  parts.push(icon([g.icon, ...services.map((s) => s.icon)], `guest "${g.id}"`, kind, b.x + 12, b.y + 14, GUEST_ICON, GUEST_COLOR[kind] ?? C.dim, g.name));
+  const dnsNets = has(g.ip) ? dnsFor.get(g.ip.trim()) ?? [] : [];
+  const pillW = dnsNets.length ? pillWidth("DNS") + 8 : 0;
+  const nameMax = textW - rightW - 8 - pillW;
+  parts.push(text(textX, b.y + 24, g.name, { size: 13, weight: 600, max: nameMax }));
+  if (dnsNets.length) {
+    const nameW = Math.min(textWidth(g.name, 13, false, 600), nameMax);
+    parts.push(pill(textX + nameW + 8, b.y + 13, "DNS", C.dns));
+  }
 
   const sub = has(g.description) ? g.description
     : !multi && services.length === 1 && services[0].name !== g.name ? services[0].name : "";
+  // The second port line shares the next text row; it drops its label if the
+  // row's own text leaves too little room.
+  const ip2W = has(g.ip) ? textWidth(g.ip, 11, true) : 0;
+  const row2Room = textW - (sub ? Math.min(textWidth(sub, 11), textW) : ip2W) - 8;
+  const line2Label = ports.length > 1 && portLineW(1, true) <= row2Room;
+  const line2W = ports.length > 1 ? portLineW(1, line2Label) + 8 : 0;
   let cy = b.y + 39;
-  if (sub) { parts.push(text(textX, cy, sub, { size: 11, fill: C.dim, max: b.w - 62 })); cy += 15; }
-  const addr = addrLine(g.ip, g.hostname, textX, sub ? cy : b.y + 44, b.w - 62, 11);
+  if (sub) { parts.push(text(textX, cy, sub, { size: 11, fill: C.dim, max: textW - line2W })); cy += 15; }
+  const addrY = sub ? cy : b.y + 44;
+  const addr = addrLine(g.ip, hostRowH(g) ? null : g.hostname, textX, addrY, textW, 11);
   if (addr) parts.push(addr);
+  if (hostRowH(g)) parts.push(text(textX, addrY + HOST_ROW, g.hostname!, { size: 11, mono: true, fill: C.host, max: textW }));
 
-  const tag = g.vmid !== null && g.vmid !== undefined && String(g.vmid) !== ""
-    ? `${kind === "vm" ? "VM" : "CT"} ${g.vmid}` : kind === "other" ? "" : kind.toUpperCase();
-  if (tag) parts.push(text(right, b.y + 22, tag, { size: 10, mono: true, fill: C.faint, anchor: "end" }));
-  if (has(g.ip) && parseIp(g.ip) !== null) parts.push(text(right, b.y + 36, lastOctet(g.ip), { size: 10, mono: true, fill: C.faint, anchor: "end" }));
+  if (ports.length) parts.push(portLine(0, b.y + 24, true));
+  if (ports.length > 1) parts.push(portLine(1, sub ? b.y + 39 : addrY, line2Label));
+  const vmid = g.vmid !== null && g.vmid !== undefined && String(g.vmid) !== "" ? `${kind === "vm" ? "VM" : "CT"} ${g.vmid}` : "";
+  if (vmid && ports.length < 2) parts.push(text(right, b.y + (ports.length ? 38 : 24), vmid, { size: 10, mono: true, fill: C.faint, anchor: "end" }));
 
   if (multi) {
-    let sy = b.y + GUEST_BASE_H;
+    let sy = b.y + GUEST_BASE_H + hostRowH(g);
     for (const s of services) {
+      const sp = portsLabel(s.ports ?? []);
+      const spW = sp ? textWidth(sp, 10, true) + 8 : 0;
       const row = icon([s.icon], `service "${s.name}" in "${g.id}"`, "other", textX, sy - 11, 13, C.dim, s.name) +
-        text(textX + 20, sy, s.name, { size: 11, weight: 500, max: b.w - 82 });
+        text(textX + 20, sy, s.name, { size: 11, weight: 500, max: textW - 20 - spW }) +
+        (sp ? text(right, sy, sp, { size: 10, mono: true, fill: C.dim, anchor: "end" }) : "");
       parts.push(dimmed(isPlanned(s), row));
       sy += SERVICE_ROW;
     }
@@ -573,9 +651,9 @@ function hardwareTile(hw: Hardware, b: Box): string {
   const { x, y, w, h } = b;
   // Square left side with a straight accent along its full height; rounded right side.
   return `<path d="M${r1(x)} ${r1(y)} H${r1(x + w - 6)} Q${r1(x + w)} ${r1(y)} ${r1(x + w)} ${r1(y + 6)} V${r1(y + h - 6)} Q${r1(x + w)} ${r1(y + h)} ${r1(x + w - 6)} ${r1(y + h)} H${r1(x)} Z" fill="${C.cardInner}" stroke="${C.border}" stroke-width="1"/>` +
-    `<rect x="${r1(x - 0.5)}" y="${r1(y - 0.5)}" width="2.5" height="${r1(h + 1)}" fill="${C.faint}"/>` +
+    `<rect x="${r1(x - 0.5)}" y="${r1(y - 0.5)}" width="2.5" height="${r1(h + 1)}" fill="${C.section}"/>` +
     hwGlyph(kind, b.x + 11, b.y + 14, 18, C.dim) +
-    (kind ? text(tx, b.y + 15, kind.toUpperCase(), { size: 8.5, weight: 600, fill: C.dim, spacing: 1, max: maxW }) : "") +
+    (kind ? text(tx, b.y + 15, kind.toUpperCase(), { size: 8.5, weight: 600, fill: C.section, spacing: 1, max: maxW }) : "") +
     text(tx, b.y + (kind ? 28 : 22), hw.name, { size: 12, weight: 600, max: maxW }) +
     (has(hw.detail) ? text(tx, b.y + (kind ? 40 : 36), hw.detail, { size: 9.5, fill: C.dim, max: maxW }) : "");
 }
@@ -597,12 +675,14 @@ function hardwareLayout(hardware: Hardware[], x: number, top: number, w: number)
 }
 
 // Lays out a server card; returns height and a render function bound to that layout.
+// An osIcon sits right of the main icon and pushes the details over.
+const osShift = (d: Device) => (has(d.osIcon) ? 56 : 0);
 function layoutServer(d: Device, x: number, y: number, w: number) {
   const hardware = (d.hardware ?? []).filter((hw) => has(hw.name));
   const hwTop = y + TAB_H + 16;
   const hw = hardwareLayout(hardware, x, hwTop, w);
   const headerH = Math.max(
-    TAB_H + Math.max(56, detailLines(d, 0, 0, HW_LEFT_RESERVE - 110).h + 8) + 22,
+    TAB_H + Math.max(56, detailLines(d, 0, 0, HW_LEFT_RESERVE - 110 - osShift(d)).h + 8) + 22,
     hw.h ? hwTop - y + hw.h + 18 : 0,
   );
   const panelX = x + 18;
@@ -638,7 +718,8 @@ function layoutServer(d: Device, x: number, y: number, w: number) {
       tabCard(box, tabWidth(d, w), color, planned),
       tab.svg(x, y),
       icon([d.icon], `device "${d.id}"`, roleOf(d), x + 20, y + TAB_H + 18, 48, color, d.name),
-      detailLines(d, x + 84, y + TAB_H + 32, (hardware.length ? HW_LEFT_RESERVE : w) - 110).svg,
+      has(d.osIcon) ? icon([d.osIcon], `device "${d.id}" osIcon`, "other", x + 76, y + TAB_H + 18, 48, C.dim, d.os ?? d.osIcon) : "",
+      detailLines(d, x + 84 + osShift(d), y + TAB_H + 32, (hardware.length ? HW_LEFT_RESERVE : w) - 110 - osShift(d)).svg,
       ...hardware.map((item, i) => hardwareTile(item, hw.boxes[i])),
     ];
     for (const p of panels) {
@@ -659,13 +740,17 @@ function networksPanel(x: number, y: number, w: number): { svg: string; h: numbe
   const out: string[] = [text(x + 16, y + 28, "Networks", { size: 15, weight: 600 })];
   let ry = y + 42;
   for (const { net, color } of netInfo) {
-    const rh = has(net.domain) || has(net.description) ? 44 : 32;
+    const dns = dnsOf(net);
+    const rh = has(net.domain) || has(net.description) || dns.length ? 44 : 32;
     out.push(roundRect({ x: x + 12, y: ry, w: w - 24, h: rh }, tint(color, 0.07), C.border, 6, false, 1));
     out.push(`<rect x="${x + 12}" y="${ry}" width="3" height="${rh}" rx="1.5" fill="${color}"/>`);
     out.push(text(x + 26, ry + 20, net.name, { size: 13, weight: 600, fill: color, max: w / 2 - 30 }));
     if (has(net.cidr)) out.push(text(x + w - 24, ry + 20, net.cidr, { size: 12, mono: true, anchor: "end" }));
+    const dnsLabel = dns.length ? `DNS ${dns.join(", ")}` : "";
+    const dnsW = dnsLabel ? textWidth(dnsLabel, 10, true) + 12 : 0;
+    if (dnsLabel) out.push(text(x + w - 24, ry + 35, dnsLabel, { size: 10, mono: true, fill: C.dim, anchor: "end", max: w - 50 }));
     const sub = [net.domain, net.description].filter(has).join(" · ");
-    if (sub) out.push(text(x + 26, ry + 35, sub, { size: 10, mono: has(net.domain) && !has(net.description), fill: C.dim, max: w - 50 }));
+    if (sub) out.push(text(x + 26, ry + 35, sub, { size: 10, mono: has(net.domain) && !has(net.description), fill: C.dim, max: w - 50 - dnsW }));
     ry += rh + 8;
   }
   const h = ry - y + 6;
@@ -674,12 +759,17 @@ function networksPanel(x: number, y: number, w: number): { svg: string; h: numbe
 
 function legendPanel(x: number, y: number, w: number): { svg: string; h: number } {
   const rows: [string, string][] = [
-    [`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.lan}" stroke-width="2"/>`, "LAN link"],
+    // One row per network that has a link on it, in that network's colour.
+    ...netInfo.filter((n) => validLinks.some((l) => !isWanLink(l) && linkNet(l) === n))
+      .map((n): [string, string] => [`<line x1="0" y1="0" x2="34" y2="0" stroke="${n.color}" stroke-width="2"/>`, `${n.net.name} link`]),
+    ...(validLinks.some((l) => !isWanLink(l) && !linkNet(l)) ? [[`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.lan}" stroke-width="2"/>`, "link"] as [string, string]] : []),
     [`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.wan}" stroke-width="2"/>`, "WAN link"],
     [`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.lan}" stroke-width="2" stroke-dasharray="5 5" opacity="0.5"/>`, "planned link"],
     [`<rect x="0" y="-8" width="34" height="16" rx="4" fill="none" stroke="${C.dim}" stroke-dasharray="4 3" opacity="0.6"/>`, "planned device / service"],
     [`<rect x="0" y="-8" width="34" height="16" rx="4" fill="${tint(GUEST_COLOR.lxc, 0.08)}" stroke="${GUEST_COLOR.lxc}"/>`, "LXC containers"],
   ];
+  const dnsGuest = devices.some((d) => (d.guests ?? []).some((gu) => has(gu.ip) && dnsFor.has(gu.ip.trim())));
+  if (dnsGuest) rows.push([`<g transform="translate(${(34 - pillWidth("DNS")) / 2} ${-PILL_H / 2})">${pill(0, 0, "DNS", C.dns)}</g>`, "DNS server for the network"]);
   // Port rows only when some device lists ports in that state.
   const portSym = (color: string, fill: string) => `<rect x="9" y="-8" width="16" height="14" rx="3" fill="${fill}" stroke="${color}" stroke-width="1.2"/>`;
   const allPorts = devices.flatMap((d) => (d.ports ?? []).map((p) => ({ d, p })));
@@ -691,7 +781,19 @@ function legendPanel(x: number, y: number, w: number): { svg: string; h: number 
     out.push(`<g transform="translate(${x + 18} ${ry - 4})">${sym}</g>`);
     out.push(text(x + 66, ry, label, { size: 11, fill: C.dim }));
   });
-  const h = 56 + rows.length * 24 - 4;
+  // What the mono text colours mean, using real values from the diagram.
+  const all = devices.flatMap((d) => [d, ...(d.guests ?? [])]);
+  const ip = all.map((n) => n.ip).find((v) => has(v) && parseIp(v) !== null);
+  const host = all.map((n) => n.hostname).find(has);
+  const samples: [string, string, string][] = [];
+  if (ip) samples.push([ip, ipColor(ip), "IP address"]);
+  if (host) samples.push([host, C.host, "hostname"]);
+  samples.forEach(([sample, fill, label], i) => {
+    const ry = y + 56 + (rows.length + i) * 24;
+    out.push(text(x + 18, ry, sample, { size: 11, mono: true, fill, max: w - 110 }));
+    out.push(text(x + w - 18, ry, label, { size: 11, fill: C.dim, anchor: "end" }));
+  });
+  const h = 56 + (rows.length + samples.length) * 24 - 4;
   return { svg: roundRect({ x, y, w, h }, C.card, C.border, 10) + out.join(""), h };
 }
 
@@ -708,7 +810,6 @@ const boxes = new Map<string, Box>(); // device id -> box used for link anchors
 
 const title = has(lab.meta?.title) ? lab.meta.title : "Homelab";
 body.push(text(M, 66, title, { size: 34, weight: 700 }));
-if (has(lab.meta?.updated)) body.push(text(W - M, 66, `updated ${lab.meta.updated}`, { size: 12, mono: true, fill: C.dim, anchor: "end" }));
 
 let y = 104;
 
@@ -719,7 +820,7 @@ body.push(nets.svg, legend.svg);
 // Clouds are drawn after the device tiers (below), once the port they plug
 // into has a position, so each can sit centred above it.
 const internet = devices.filter((d) => tierOf(d) === "internet");
-const CLOUD_H = 115, CLOUD_HALF_W = 110;
+const CLOUD_H = 130, CLOUD_HALF_W = 128;
 const cloudTop = y;
 y += Math.max(nets.h, legend.h, internet.length ? CLOUD_H : 0);
 
@@ -832,8 +933,8 @@ const linkSvg: string[] = [];
 const portSvg: string[] = [];
 for (const r of routed) {
   const planned = isPlanned(r.l);
-  const wan = (r.l.type ?? "").toLowerCase() === "wan";
-  const color = wan ? C.wan : C.lan;
+  const wan = isWanLink(r.l);
+  const color = linkColor(r.l);
   const upPort = portAt(r, "up"), downPort = portAt(r, "down");
   let x1 = upPort?.x ?? upX.get(r)!, x2 = downPort?.x ?? downX.get(r)!;
   if (!upPort && downPort && linksOn(r.up, "up") === 1 && spans(r.up, x2)) x1 = x2;
@@ -862,7 +963,9 @@ for (const r of routed) {
 
 // ---------------------------------------------------------------- output
 
-const svg = [
+// The "updated" stamp is kept in its own group so a change can be detected
+// by comparing everything else.
+const render = (updated: Opt<string>) => [
   `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
   `<title>${esc(title)}</title>`,
   `<defs><pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="0.9" fill="${C.dot}"/></pattern>${iconDefs.join("")}</defs>`,
@@ -871,14 +974,50 @@ const svg = [
   `<g id="links">${linkSvg.join("")}</g>`,
   `<g id="port-labels">${portLabels.join("")}</g>`,
   `<g id="ports">${portSvg.join("")}</g>`,
+  `<g id="updated">${has(updated) ? text(W - M, 66, `updated ${updated}`, { size: 12, mono: true, fill: C.dim, anchor: "end" }) : ""}</g>`,
   `</svg>`,
-].join("\n");
+].join("\n") + "\n";
 
-writeFileSync(OUTPUT, svg + "\n");
+// ---------------------------------------------------------------- history
+// If the diagram changed (ignoring the stamp), keep the old one in history/,
+// stamp meta.updated in homelab.json with the current time, then write.
+// An unchanged diagram leaves every file alone, so reruns are identical.
+
+const HISTORY_DIR = join(dirname(OUTPUT), "history");
+const stripStamp = (s: string) => s.replace(/<g id="updated">.*?<\/g>\n/, "");
+const pad = (n: number) => String(n).padStart(2, "0");
+const now = new Date();
+const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+let updated = lab.meta?.updated;
+const prev = existsSync(OUTPUT) ? readFileSync(OUTPUT, "utf8") : null;
+let svg = render(updated);
+if (prev === null || stripStamp(prev) !== stripStamp(svg)) {
+  if (prev !== null) {
+    mkdirSync(HISTORY_DIR, { recursive: true });
+    const base = `homelab_${has(updated) ? updated.trim().replace(/[ :]+/g, (m) => (m.includes(" ") ? "_" : "")) : "undated"}`;
+    let file = join(HISTORY_DIR, `${base}.svg`);
+    for (let i = 2; existsSync(file); i++) file = join(HISTORY_DIR, `${base}-${i}.svg`);
+    writeFileSync(file, prev);
+    console.log(`✓ diagram changed: previous version kept as ${relative(dirname(OUTPUT), file)}`);
+  }
+  const raw = readFileSync(INPUT, "utf8");
+  const re = /("updated"\s*:\s*)("[^"]*"|null)/;
+  if (re.test(raw)) {
+    writeFileSync(INPUT, raw.replace(re, `$1"${stamp}"`));
+    updated = stamp;
+    svg = render(updated);
+  } else {
+    warn(`meta.updated is missing, so the diagram can't be stamped; add "updated": "" to meta`);
+  }
+}
+const unchanged = svg === prev;
+if (!unchanged) writeFileSync(OUTPUT, svg);
 
 writeServiceReadmes({
   devices, links, warn, servicesDir: SERVICES_DIR,
   network: (ip) => networkOf(ip)?.net,
+  dnsFor: (ip) => (dnsFor.get(ip.trim()) ?? []).map((n) => n.net.name),
 });
 
 if (warnings.length) {
@@ -887,4 +1026,4 @@ if (warnings.length) {
 } else {
   console.log("✓ all links and IPs resolve to a device and network");
 }
-console.log(`✓ wrote ${OUTPUT} (${W}×${H})`);
+console.log(unchanged ? `✓ ${OUTPUT} unchanged` : `✓ wrote ${OUTPUT} (${W}×${H}), stamped ${updated}`);

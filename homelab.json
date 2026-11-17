@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Homelab",
-    "updated": "2026-11-14"
+    "updated": "2026-11-17 16:26"
   },
 
   "networks": [
@@ -9,7 +9,8 @@
       "id": "lan",
       "name": "LAN",
       "cidr": "192.168.178.0/24",
-      "domain": "home.arpa"
+      "domain": "home.arpa",
+      "dns": "192.168.178.73"
     }
   ],
 
@@ -48,6 +49,7 @@
       "model": "ThinkPad X220",
       "os": "Proxmox VE",
       "icon": "proxmox-light",
+      "osIcon": "debian",
       "ip": "192.168.178.68",
       "hostname": "pve1.home.arpa",
       "hardware": [
@@ -61,28 +63,32 @@
           "name": "OpenHamClock",
           "type": "lxc",
           "ip": "192.168.178.61",
-          "services": [{ "name": "OpenHamClock", "icon": null }]
+          "hostname": "openhamclock.home.arpa",
+          "services": [{ "name": "OpenHamClock", "icon": null, "ports": [{ "port": 3000, "label": "web UI" }, { "port": 3001, "label": "backend" }] }]
         },
         {
           "id": "wavelog",
           "name": "Wavelog",
           "type": "lxc",
           "ip": "192.168.178.70",
-          "services": [{ "name": "Wavelog", "icon": "wavelog" }]
+          "hostname": "wavelog.home.arpa",
+          "services": [{ "name": "Wavelog", "icon": "wavelog", "ports": [{ "port": 8086, "label": "web UI" }] }]
         },
         {
           "id": "pihole",
           "name": "Pi-hole",
           "type": "lxc",
           "ip": "192.168.178.73",
-          "services": [{ "name": "Pi-hole", "icon": "pi-hole" }]
+          "hostname": "pihole.home.arpa",
+          "services": [{ "name": "Pi-hole", "icon": "pi-hole", "ports": [{ "port": 80, "label": "web UI" }, { "port": 53, "label": "DNS", "protocol": "tcp/udp" }] }]
         },
         {
           "id": "radicale",
           "name": "Radicale",
           "type": "lxc",
           "ip": "192.168.178.66",
-          "services": [{ "name": "Radicale", "icon": "radicale" }]
+          "hostname": "radicale.home.arpa",
+          "services": [{ "name": "Radicale", "icon": "radicale", "ports": [{ "port": 5232, "label": "web UI" }] }]
         }
       ]
     }

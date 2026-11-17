@@ -6,6 +6,14 @@ also live in the root:
 
 - `homelab.svg`: the network diagram
 - `services/<service>/readme.md`: one at-a-glance summary per service
+- `history/homelab_<timestamp>.svg`: every earlier version of the diagram,
+  named after its `updated` stamp (`-2`, `-3` … for clashes). Never edit or
+  delete these.
+
+When the diagram changes (anything except the stamp), the generator copies
+the old `homelab.svg` into `history/` and sets `meta.updated` in
+`homelab.json` to the current local time (`YYYY-MM-DD HH:MM`). Don't set
+`updated` by hand.
 
 Everything else needed to make the outputs lives in `claude/`; keep it
 there and keep the root to `homelab.json`, the outputs and my `readme.md`. Don't hand-draw the diagram. The generator
@@ -22,29 +30,22 @@ After changes, render a preview and look at it, e.g.
    sense (invalid JSON, missing names, icon names with no file) before
    changing anything.
 2. Resolve icons (see Style) and run `./claude/generate.sh`.
-3. For every readme the script reports as **new**, replace the TODO
-   "What it does" and "Crib" sections (see Service readmes).
-4. Report the script's warnings, which icons you added, and which readmes
-   you wrote. Never delete a `services/` folder the script flags as
-   orphaned; ask me.
+3. Report the script's warnings, which icons you added, and which readmes
+   the script reports as **new**. Never delete a `services/` folder the
+   script flags as orphaned; ask me.
 
 ## Service readmes
 
 - One per service in `guests[].services[]`. The folder is the service name
   lowercased with hyphens (`Pi-hole` → `services/pi-hole/`).
 - Everything between `<!-- generated:start … -->` and `<!-- generated:end -->`
-  is rewritten every run from the JSON: LXC, IP, network, host, path from
-  the internet. Change the JSON, not that block.
-- Everything else is hand-written and kept between runs:
-  - **What it does:** one sentence.
-  - **Crib:** web UI (as `<IP>`, not a hard-coded address), install method,
-    config file, data location, systemd unit, ports, logs, update/restart.
-- No hostnames: I don't use them, IPs only.
-- "Location" means the host the service runs on, not a physical place.
-- Look up the facts online. Wavelog was installed with a Proxmox community
-  helper script, so follow that script's layout. Everything else was
-  installed by hand, so give the standard default paths and mark anything
-  uncertain *(verify)*.
+  is rewritten every run from the JSON: LXC, IP, hostname, network, DNS role,
+  host, path from the internet, ports (with labels). Change the JSON, not
+  that block.
+- Everything else (the "What it does" and "Crib" sections) is written by
+  me, by hand, and kept between runs. Don't write, fill in, research or
+  edit these sections, even when they still say TODO; leave the script's
+  placeholder as it is.
 
 ## Style
 
@@ -80,6 +81,27 @@ After changes, render a preview and look at it, e.g.
   (`kind`, `name`, `detail`) is drawn as small neutral tiles in the card's
   header, right of the model/IP; the LXC panel stays full width and is the
   visual focus.
+- `claude/refrence-two.png` is a second reference: the cloud (puffy, filled,
+  slate outline, no icon), links coloured by network, tan accent bars on
+  hardware tiles and ports tinted with their cable's colour come from it.
+- A server's `osIcon` (e.g. `debian`) is drawn beside its main icon. All my
+  Proxmox nodes and LXCs are Debian; don't add `osIcon` to LXCs.
+- Links are coloured by the network their ends' IPs sit on (LAN blue); WAN
+  links are red. A plugged-in port is filled with its cable's colour.
+- DNS: a network's `dns` (an IP, or a list) is the DNS server its DHCP hands
+  out (mine: Pi-hole, `192.168.178.73`). It shows as `DNS <ip>` in the
+  Networks panel (keep it there) and as a red `DNS` pill beside the name of
+  the guest with that IP. Don't hardcode which guest is DNS; it follows the IP.
+- Hostnames: I use them alongside IPs (`<name>.home.arpa`, in each device's
+  and guest's `hostname`). Show both. On guest tiles the hostname gets its
+  own line under the IP.
+- Guest tiles: 40px icon, name (+ DNS pill), IP, hostname; the service's
+  `ports` top right. Each port is `{ "port", "label", "protocol"? }`, most
+  important (web UI) first. One port: just `:8086`. Several: one per line
+  (name row, then IP row), each with its label in small faint text before
+  the number (`web UI :80` / `DNS :53`); extras beyond two show as `+n`.
+- The legend explains the mono text colours with real samples from the
+  diagram (an IP and a hostname).
 - Draw items with `"status": "planned"` dashed and dimmed.
 - Links must meet the card outlines at both ends.
 - Devices can list `ports` (drawn as a port row like the reference); a link's
@@ -93,4 +115,8 @@ After changes, render a preview and look at it, e.g.
 - Treat every field except `id` and `name` as optional, and handle missing
   fields without breaking. LXC guests need a `name` too.
 - Rerunning the generator must give the same diagram and readmes every time
-  (check by running it twice and comparing hashes).
+  (check by running it twice and comparing hashes): an unchanged diagram
+  must not be restamped or archived.
+- Test history/stamping changes on copies in the scratchpad
+  (`node generate.ts <copy.json> <copy.svg>`), not on the real files, so
+  `history/` only gets real iterations.

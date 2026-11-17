@@ -39,6 +39,32 @@
         },
         "status": {
           "$ref": "#/definitions/status"
+        },
+        "ports": {
+          "description": "Ports the service listens on, most important (usually the web UI) first.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "required": [
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "label": {
+                "$ref": "#/definitions/optString"
+              },
+              "protocol": {
+                "$ref": "#/definitions/optString"
+              }
+            }
+          }
         }
       }
     },
@@ -135,6 +161,10 @@
         "icon": {
           "$ref": "#/definitions/optString"
         },
+        "osIcon": {
+          "description": "Icon of the OS the server and its guests run on (e.g. debian), drawn beside the main icon.",
+          "$ref": "#/definitions/optString"
+        },
         "status": {
           "$ref": "#/definitions/status"
         },
@@ -187,6 +217,24 @@
         },
         "domain": {
           "$ref": "#/definitions/optString"
+        },
+        "dns": {
+          "description": "DNS server IP(s) handed to clients on this network (e.g. by DHCP). A guest with one of these IPs gets a DNS pill.",
+          "oneOf": [
+            {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
         },
         "color": {
           "$ref": "#/definitions/optString"
