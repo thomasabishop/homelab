@@ -100,8 +100,8 @@ After changes, render a preview and look at it, e.g.
   important (web UI) first. One port: just `:8086`. Several: one per line
   (name row, then IP row), each with its label in small faint text before
   the number (`web UI :80` / `DNS :53`); extras beyond two show as `+n`.
-- The legend explains the mono text colours with real samples from the
-  diagram (an IP and a hostname).
+- The legend shows link, LXC, DNS and port symbols only; no planned-item
+  rows and no IP/hostname samples (they are self-evident).
 - Draw items with `"status": "planned"` dashed and dimmed.
 - Links must meet the card outlines at both ends.
 - Devices can list `ports` (drawn as a port row like the reference); a link's

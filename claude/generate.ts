@@ -764,8 +764,6 @@ function legendPanel(x: number, y: number, w: number): { svg: string; h: number 
       .map((n): [string, string] => [`<line x1="0" y1="0" x2="34" y2="0" stroke="${n.color}" stroke-width="2"/>`, `${n.net.name} link`]),
     ...(validLinks.some((l) => !isWanLink(l) && !linkNet(l)) ? [[`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.lan}" stroke-width="2"/>`, "link"] as [string, string]] : []),
     [`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.wan}" stroke-width="2"/>`, "WAN link"],
-    [`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.lan}" stroke-width="2" stroke-dasharray="5 5" opacity="0.5"/>`, "planned link"],
-    [`<rect x="0" y="-8" width="34" height="16" rx="4" fill="none" stroke="${C.dim}" stroke-dasharray="4 3" opacity="0.6"/>`, "planned device / service"],
     [`<rect x="0" y="-8" width="34" height="16" rx="4" fill="${tint(GUEST_COLOR.lxc, 0.08)}" stroke="${GUEST_COLOR.lxc}"/>`, "LXC containers"],
   ];
   const dnsGuest = devices.some((d) => (d.guests ?? []).some((gu) => has(gu.ip) && dnsFor.has(gu.ip.trim())));
@@ -781,19 +779,7 @@ function legendPanel(x: number, y: number, w: number): { svg: string; h: number 
     out.push(`<g transform="translate(${x + 18} ${ry - 4})">${sym}</g>`);
     out.push(text(x + 66, ry, label, { size: 11, fill: C.dim }));
   });
-  // What the mono text colours mean, using real values from the diagram.
-  const all = devices.flatMap((d) => [d, ...(d.guests ?? [])]);
-  const ip = all.map((n) => n.ip).find((v) => has(v) && parseIp(v) !== null);
-  const host = all.map((n) => n.hostname).find(has);
-  const samples: [string, string, string][] = [];
-  if (ip) samples.push([ip, ipColor(ip), "IP address"]);
-  if (host) samples.push([host, C.host, "hostname"]);
-  samples.forEach(([sample, fill, label], i) => {
-    const ry = y + 56 + (rows.length + i) * 24;
-    out.push(text(x + 18, ry, sample, { size: 11, mono: true, fill, max: w - 110 }));
-    out.push(text(x + w - 18, ry, label, { size: 11, fill: C.dim, anchor: "end" }));
-  });
-  const h = 56 + (rows.length + samples.length) * 24 - 4;
+  const h = 56 + rows.length * 24 - 4;
   return { svg: roundRect({ x, y, w, h }, C.card, C.border, 10) + out.join(""), h };
 }
 
