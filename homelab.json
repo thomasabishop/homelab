@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Homelab",
-    "updated": "2026-11-17 19:19"
+    "updated": "2026-11-23 18:41"
   },
 
   "networks": [
@@ -64,7 +64,7 @@
           "type": "lxc",
           "ip": "192.168.178.61",
           "hostname": "openhamclock.home.arpa",
-          "services": [{ "name": "OpenHamClock", "icon": null, "ports": [{ "port": 3000, "label": "web UI" }, { "port": 3001, "label": "backend" }] }]
+          "services": [{ "name": "OpenHamClock", "icon": null, "ports": [{ "port": 3000, "label": "frontend" }, { "port": 3001, "label": "backend" }] }]
         },
         {
           "id": "wavelog",
@@ -72,7 +72,7 @@
           "type": "lxc",
           "ip": "192.168.178.70",
           "hostname": "wavelog.home.arpa",
-          "services": [{ "name": "Wavelog", "icon": "wavelog", "ports": [{ "port": 8086, "label": "web UI" }] }]
+          "services": [{ "name": "Wavelog", "icon": "wavelog", "ports": [{ "port": 8086, "label": "frontend" }] }]
         },
         {
           "id": "pihole",
@@ -80,7 +80,7 @@
           "type": "lxc",
           "ip": "192.168.178.73",
           "hostname": "pihole.home.arpa",
-          "services": [{ "name": "Pi-hole", "icon": "pi-hole", "ports": [{ "port": 80, "label": "web UI" }, { "port": 53, "label": "DNS", "protocol": "tcp/udp" }] }]
+          "services": [{ "name": "Pi-hole", "icon": "pi-hole", "ports": [{ "port": 80, "label": "frontend" }, { "port": 53, "label": "DNS", "protocol": "tcp/udp" }] }]
         },
         {
           "id": "radicale",
@@ -88,7 +88,15 @@
           "type": "lxc",
           "ip": "192.168.178.66",
           "hostname": "radicale.home.arpa",
-          "services": [{ "name": "Radicale", "icon": "radicale", "ports": [{ "port": 5232, "label": "web UI" }] }]
+          "services": [{ "name": "Radicale", "icon": "radicale", "ports": [{ "port": 5232, "label": "frontend" }] }]
+        },
+        {
+          "id": "eolas",
+          "name": "Eolas",
+          "type": "lxc",
+          "ip": "192.168.178.71",
+          "hostname": "eolas.home.arpa",
+          "services": [{ "name": "Eolas", "icon": null, "ports": [{ "port": 3000, "label": "frontend" }, { "port": 3001, "label": "API" }] }]
         }
       ]
     }

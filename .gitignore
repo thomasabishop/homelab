@@ -1,2 +1,5 @@
 claude/node_modules/
-services
+services/pi-hole
+services/openhamclock
+services/radicale
+services/wavelog
