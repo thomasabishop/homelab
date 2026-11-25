@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
-import { measure, outline, useFontDir } from "./fonts.ts";
+import { measure, outline, useFontDir, useFonts } from "./fonts.ts";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const INPUT = resolve(process.argv[2] ?? join(ROOT, "..", "homelab.json"));
@@ -63,29 +63,52 @@ interface Box { x: number; y: number; w: number; h: number; tab?: number }
 // ---------------------------------------------------------------- style
 
 const C = {
-  bg: "#0b0f15",
-  dot: "#1a212b",
-  // Panels are translucent overlays, as in the reference: each nesting level
-  // gets lighter and the dot grid shows through faintly.
-  card: "rgba(110, 150, 200, 0.06)",
-  cardInner: "rgba(110, 150, 200, 0.07)",
-  border: "#2a333f",
-  text: "#e6edf3",
-  dim: "#8b949e",
-  faint: "#5c6672",
-  host: "#79a8e0",
-  lan: "#c9d1d9",
-  wan: "#e5534b",
-  dns: "#f85149", // DNS pill: red so it stands out
-  cloudFill: "#1a2332",
-  cloudStroke: "#3a4a60",
-  section: "#d4a373",
+  bg: "#0a0a0a", // near-black page; the dot grid shows only here
+  dot: "#141414",
+  // Cards are solid so the dots stay on the page background; tiles inside
+  // them are a translucent white lift, so each nesting level gets lighter.
+  card: "#0f0f0f",
+  serverCard: "#161616", // server cards: a step lighter than the network gear
+  cardInner: "rgba(255, 255, 255, 0.03)",
+  border: "#232323",
+  text: "#f2f2f2",
+  dim: "#858585",
+  faint: "#4d4d4d",
+  host: "#e8e8e8",
+  lan: "#bdbdbd",
+  wan: "#ff5a4e",
+  dns: "#ff5a4e", // DNS pill: red so it stands out
+  cloudFill: "#141414",
+  cloudStroke: "#333333",
+  section: "#7d7d7d",
 };
 const ROLE_COLOR: Record<string, string> = {
-  internet: "#9aa4b2", router: "#e5534b", switch: "#8b949e", server: "#6e7681",
+  internet: "#9a9a9a", router: "#ff5a4e", switch: "#8a8a8a", server: "#5e5e5e",
 };
 const GUEST_COLOR: Record<string, string> = { lxc: "#d9822b", vm: "#4f9cf9" };
 const NET_PALETTE = ["#4f9cf9", "#e5a54b", "#a371f7", "#3fb950", "#e5534b", "#39c5cf"];
+let LABEL_BG = "#0f0f0f"; // C.card
+// Corner rounding of cards, tiles, ports and pills (1 = as designed, 0 = square).
+let RADIUS = 1;
+const rad = (n: number) => r1(n * RADIUS);
+
+// Optional theme for experimenting with the look: HOMELAB_THEME=<file.json>
+// overrides colours and fonts. Unset, the diagram is drawn as above.
+interface Theme {
+  colors?: Partial<typeof C>; roles?: Record<string, string>; guests?: Record<string, string>;
+  nets?: string[]; labelBg?: string; radius?: number; fontDir?: string; fonts?: Record<string, string>;
+}
+if (process.env.HOMELAB_THEME) {
+  const file = resolve(process.env.HOMELAB_THEME);
+  const t = JSON.parse(readFileSync(file, "utf8")) as Theme;
+  Object.assign(C, t.colors ?? {});
+  Object.assign(ROLE_COLOR, t.roles ?? {});
+  Object.assign(GUEST_COLOR, t.guests ?? {});
+  if (t.nets) NET_PALETTE.splice(0, NET_PALETTE.length, ...t.nets);
+  if (t.labelBg) LABEL_BG = t.labelBg;
+  if (typeof t.radius === "number") RADIUS = t.radius;
+  if (t.fonts) useFonts(resolve(dirname(file), t.fontDir ?? "."), t.fonts);
+}
 
 const W = 1200;
 const M = 40;
@@ -352,19 +375,19 @@ function icon(names: Opt<string>[], owner: string, fallback: string, x: number, 
 // ---------------------------------------------------------------- shapes
 
 // Card with a name tab on its top-left edge, like the reference.
-function tabCard(b: Box, tabW: number, stroke: string, planned: boolean): string {
+function tabCard(b: Box, tabW: number, stroke: string, planned: boolean, fill = C.card): string {
   const { x, y, w, h } = b;
-  const r = 10, top = y + TAB_H;
+  const r = rad(10), top = y + TAB_H;
   const d = [
     `M${x} ${y + r}`, `Q${x} ${y} ${x + r} ${y}`, `H${x + tabW - 10}`,
     `L${x + tabW + 10} ${top}`, `H${x + w - r}`, `Q${x + w} ${top} ${x + w} ${top + r}`,
     `V${y + h - r}`, `Q${x + w} ${y + h} ${x + w - r} ${y + h}`, `H${x + r}`,
     `Q${x} ${y + h} ${x} ${y + h - r}`, "Z",
   ].map((s) => s.replace(/(\d+\.\d{2,})/g, (n) => String(r1(Number(n))))).join(" ");
-  return `<path d="${d}" fill="${C.card}" stroke="${stroke}" stroke-width="1.3"${planned ? ` stroke-dasharray="6 4"` : ""}/>`;
+  return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="1.3"${planned ? ` stroke-dasharray="6 4"` : ""}/>`;
 }
 function roundRect(b: Box, fill: string, stroke: string, rx = 10, planned = false, width = 1.2): string {
-  return `<rect x="${r1(b.x)}" y="${r1(b.y)}" width="${r1(b.w)}" height="${r1(b.h)}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"${planned ? ` stroke-dasharray="6 4"` : ""}/>`;
+  return `<rect x="${r1(b.x)}" y="${r1(b.y)}" width="${r1(b.w)}" height="${r1(b.h)}" rx="${rad(rx)}" fill="${fill}" stroke="${stroke}" stroke-width="${width}"${planned ? ` stroke-dasharray="6 4"` : ""}/>`;
 }
 function dimmed(planned: boolean, inner: string): string {
   return planned ? `<g opacity="0.5">${inner}</g>` : inner;
@@ -425,7 +448,6 @@ const portAnchors = new Map<string, { x: number; top: number; bottom: number }>(
 // Port labels are drawn above the links on a patch of the card's colour, so a
 // cable running into a port breaks around its labels instead of crossing them.
 const portLabels: string[] = [];
-const LABEL_BG = "#101720"; // C.card over C.bg
 function portLabel(cx: number, y: number, s: string, o: TextOpts): string {
   const size = o.size ?? 12;
   const w = textWidth(o.max ? fit(s, o.max, size, o.mono, o.weight) : s, size, o.mono, o.weight);
@@ -473,7 +495,7 @@ function portRow(d: Device, b: Box): string {
       (st.caption ? portLabel(cx, top + PORT_H + 27, st.caption, { size: 10, weight: 600, fill: st.color, max: PORT_STEP - 2 }) : ""),
     ));
     const svg =
-      `<rect x="${r1(px)}" y="${r1(top)}" width="${PORT_W}" height="${PORT_H}" rx="4" fill="${st.fill}" stroke="${st.color}" stroke-width="1.3"${st.planned ? ` stroke-dasharray="3 2"` : ""}/>` +
+      `<rect x="${r1(px)}" y="${r1(top)}" width="${PORT_W}" height="${PORT_H}" rx="${rad(4)}" fill="${st.fill}" stroke="${st.color}" stroke-width="1.3"${st.planned ? ` stroke-dasharray="3 2"` : ""}/>` +
       `<path d="${jack}" fill="${C.bg}"/>`;
     return dimmed(st.planned && !isPlanned(d), svg);
   }).join("");
@@ -540,7 +562,7 @@ const guestHeight = (g: Guest) => {
 const PILL_H = 15;
 const pillWidth = (label: string) => textWidth(label, 9, false, 700) + 12;
 const pill = (x: number, y: number, label: string, color: string) =>
-  `<rect x="${r1(x)}" y="${r1(y)}" width="${r1(pillWidth(label))}" height="${PILL_H}" rx="4" fill="${tint(color, 0.14)}" stroke="${color}" stroke-width="1"/>` +
+  `<rect x="${r1(x)}" y="${r1(y)}" width="${r1(pillWidth(label))}" height="${PILL_H}" rx="${rad(4)}" fill="${tint(color, 0.14)}" stroke="${color}" stroke-width="1"/>` +
   text(x + 6, y + 11, label, { size: 9, weight: 700, fill: color });
 
 // parentPlanned: the server is already dimmed, so don't dim the guest a second time.
@@ -649,7 +671,7 @@ function hardwareTile(hw: Hardware, b: Box): string {
   const tx = b.x + 38, maxW = b.w - 46;
   const { x, y, w, h } = b;
   // Square left side with a straight accent along its full height; rounded right side.
-  return `<path d="M${r1(x)} ${r1(y)} H${r1(x + w - 6)} Q${r1(x + w)} ${r1(y)} ${r1(x + w)} ${r1(y + 6)} V${r1(y + h - 6)} Q${r1(x + w)} ${r1(y + h)} ${r1(x + w - 6)} ${r1(y + h)} H${r1(x)} Z" fill="${C.cardInner}" stroke="${C.border}" stroke-width="1"/>` +
+  return `<path d="M${r1(x)} ${r1(y)} H${r1(x + w - rad(6))} Q${r1(x + w)} ${r1(y)} ${r1(x + w)} ${r1(y + rad(6))} V${r1(y + h - rad(6))} Q${r1(x + w)} ${r1(y + h)} ${r1(x + w - rad(6))} ${r1(y + h)} H${r1(x)} Z" fill="${C.cardInner}" stroke="${C.border}" stroke-width="1"/>` +
     `<rect x="${r1(x - 0.5)}" y="${r1(y - 0.5)}" width="2.5" height="${r1(h + 1)}" fill="${C.section}"/>` +
     hwGlyph(kind, b.x + 11, b.y + 14, 18, C.dim) +
     (kind ? text(tx, b.y + 15, kind.toUpperCase(), { size: 8.5, weight: 600, fill: C.section, spacing: 1, max: maxW }) : "") +
@@ -714,7 +736,7 @@ function layoutServer(d: Device, x: number, y: number, w: number) {
     const color = roleColor(d);
     const box = { x, y, w, h };
     const out: string[] = [
-      tabCard(box, tabWidth(d, w), color, planned),
+      tabCard(box, tabWidth(d, w), color, planned, C.serverCard),
       tab.svg(x, y),
       icon([d.icon], `device "${d.id}"`, roleOf(d), x + 20, y + TAB_H + 18, 48, color, d.name),
       has(d.osIcon) ? icon([d.osIcon], `device "${d.id}" osIcon`, "other", x + 76, y + TAB_H + 18, 48, C.dim, d.os ?? d.osIcon) : "",
@@ -742,7 +764,7 @@ function networksPanel(x: number, y: number, w: number): { svg: string; h: numbe
     const dns = dnsOf(net);
     const rh = has(net.domain) || has(net.description) || dns.length ? 44 : 32;
     out.push(roundRect({ x: x + 12, y: ry, w: w - 24, h: rh }, tint(color, 0.07), C.border, 6, false, 1));
-    out.push(`<rect x="${x + 12}" y="${ry}" width="3" height="${rh}" rx="1.5" fill="${color}"/>`);
+    out.push(`<rect x="${x + 12}" y="${ry}" width="3" height="${rh}" rx="${rad(1.5)}" fill="${color}"/>`);
     out.push(text(x + 26, ry + 20, net.name, { size: 13, weight: 600, fill: color, max: w / 2 - 30 }));
     if (has(net.cidr)) out.push(text(x + w - 24, ry + 20, net.cidr, { size: 12, mono: true, anchor: "end" }));
     const dnsLabel = dns.length ? `DNS ${dns.join(", ")}` : "";
@@ -763,12 +785,11 @@ function legendPanel(x: number, y: number, w: number): { svg: string; h: number 
       .map((n): [string, string] => [`<line x1="0" y1="0" x2="34" y2="0" stroke="${n.color}" stroke-width="2"/>`, `${n.net.name} link`]),
     ...(validLinks.some((l) => !isWanLink(l) && !linkNet(l)) ? [[`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.lan}" stroke-width="2"/>`, "link"] as [string, string]] : []),
     [`<line x1="0" y1="0" x2="34" y2="0" stroke="${C.wan}" stroke-width="2"/>`, "WAN link"],
-    [`<rect x="0" y="-8" width="34" height="16" rx="4" fill="${tint(GUEST_COLOR.lxc, 0.08)}" stroke="${GUEST_COLOR.lxc}"/>`, "LXC containers"],
   ];
   const dnsGuest = devices.some((d) => (d.guests ?? []).some((gu) => has(gu.ip) && dnsFor.has(gu.ip.trim())));
   if (dnsGuest) rows.push([`<g transform="translate(${(34 - pillWidth("DNS")) / 2} ${-PILL_H / 2})">${pill(0, 0, "DNS", C.dns)}</g>`, "DNS server for the network"]);
   // Port rows only when some device lists ports in that state.
-  const portSym = (color: string, fill: string) => `<rect x="9" y="-8" width="16" height="14" rx="3" fill="${fill}" stroke="${color}" stroke-width="1.2"/>`;
+  const portSym = (color: string, fill: string) => `<rect x="9" y="-8" width="16" height="14" rx="${rad(3)}" fill="${fill}" stroke="${color}" stroke-width="1.2"/>`;
   const allPorts = devices.flatMap((d) => (d.ports ?? []).map((p) => ({ d, p })));
   if (allPorts.some(({ d, p }) => !portUse.has(`${d.id}:${p.id}`) && p.status === "used")) rows.push([portSym(C.dim, tint(C.dim, 0.18)), "port in use, device not shown"]);
   if (allPorts.some(({ d, p }) => !portUse.has(`${d.id}:${p.id}`) && (p.mode ?? "").toLowerCase() !== "wan" && p.status === "free")) rows.push([portSym(C.faint, "none"), "free port"]);
@@ -939,7 +960,7 @@ for (const r of routed) {
   linkSvg.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2"${planned ? ` stroke-dasharray="5 5" opacity="0.5"` : ""}/>`);
   for (const [px, py, port] of [[x1, y1, upPort], [x2, y2, downPort]] as const) {
     if (port) continue; // the port glyph is the connector
-    portSvg.push(`<rect x="${r1(px - 5)}" y="${r1(py - 3)}" width="10" height="6" rx="1.5" fill="${C.bg}" stroke="${color}" stroke-width="1.2"${planned ? ` opacity="0.5"` : ""}/>`);
+    portSvg.push(`<rect x="${r1(px - 5)}" y="${r1(py - 3)}" width="10" height="6" rx="${rad(1.5)}" fill="${C.bg}" stroke="${color}" stroke-width="1.2"${planned ? ` opacity="0.5"` : ""}/>`);
   }
   const guest = guestOwner.get(r.downId)?.guests?.find((g) => g.id === r.downId);
   const label = [r.l.label, r.l.cable, r.l.speed, guest ? `→ ${guest.name}` : null].filter(has).join(" · ");

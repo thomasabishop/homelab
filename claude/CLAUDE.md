@@ -45,14 +45,24 @@ entry or folder under `services/` when a service is added to
 
 ## Style
 
-- Copy the look of `claude/reference_image.jpg` (actually a PNG): dark
-  background, rounded card panels, thin coloured outlines, small uppercase
-  section labels.
-- Font: Fira Sans for names and labels, Fira Code for IPs and hostnames.
-  All text is converted to outlines (`claude/fonts.ts`, TTFs in
+- Layout follows `claude/reference_image.jpg` (actually a PNG): rounded
+  card panels, thin coloured outlines, small uppercase section labels.
+- Colours: near-black, neutral theme (no blue-grey tint). Page `#0a0a0a`
+  with a faint dot grid; cards are solid (`#0f0f0f`), so the dots show only
+  on the page background, never through cards. Server cards are a step
+  lighter (`#161616`) to stand apart from the network gear. Greys for text
+  and outlines; colour is kept for meaning: LAN blue (links, IPs, plugged
+  ports), WAN/DNS red, the orange LXC panel. Hostnames are light grey.
+  Palette lives in `C` at the top of `claude/generate.ts`.
+- Font: IBM Plex Sans for names and labels, IBM Plex Mono for IPs and
+  hostnames. All text is converted to outlines (`claude/fonts.ts`, TTFs in
   `claude/fonts/`), so the SVG looks the same on any machine; never emit
-  `<text>` or rely on installed fonts. (Both families are also installed
-  for my user in `~/.local/share/fonts/`.)
+  `<text>` or rely on installed fonts.
+- To try a different look without touching the real outputs, write a theme
+  JSON (`colors`, `roles`, `guests`, `nets`, `labelBg`, `radius`,
+  `fontDir` + `fonts`) and render a scratchpad copy with
+  `HOMELAB_THEME=<theme.json> node generate.ts <copy.json> <copy.svg>`.
+  Put previews for me in `~/Pictures/homelab-themes/`.
 - Icons: for each `icon` value, use the matching file in `claude/icons/`.
   If `icon` is missing, null, or has no file there, get the SVG from
   https://dashboardicons.com/ (search by the service or device name; files
@@ -78,8 +88,9 @@ entry or folder under `services/` when a service is added to
   header, right of the model/IP; the LXC panel stays full width and is the
   visual focus.
 - `claude/refrence-two.png` is a second reference: the cloud (puffy, filled,
-  slate outline, no icon), links coloured by network, tan accent bars on
-  hardware tiles and ports tinted with their cable's colour come from it.
+  dark grey outline, no icon), links coloured by network, accent bars on
+  hardware tiles (grey now) and ports tinted with their cable's colour come
+  from it.
 - A server's `osIcon` (e.g. `debian`) is drawn beside its main icon. All my
   Proxmox nodes and LXCs are Debian; don't add `osIcon` to LXCs.
 - Links are coloured by the network their ends' IPs sit on (LAN blue); WAN
@@ -96,7 +107,7 @@ entry or folder under `services/` when a service is added to
   important (web UI) first. One port: just `:8086`. Several: one per line
   (name row, then IP row), each with its label in small faint text before
   the number (`web UI :80` / `DNS :53`); extras beyond two show as `+n`.
-- The legend shows link, LXC, DNS and port symbols only; no planned-item
+- The legend shows link, DNS and port symbols only (no LXC row); no planned-item
   rows and no IP/hostname samples (they are self-evident).
 - Draw items with `"status": "planned"` dashed and dimmed.
 - Links must meet the card outlines at both ends.

@@ -1,5 +1,5 @@
 // Text as outlines. Every string in the diagram is converted to an SVG <path>
-// using the Fira Sans / Fira Code TTFs in fonts/, so homelab.svg looks the same
+// using the IBM Plex Sans / IBM Plex Mono TTFs in fonts/, so homelab.svg looks the same
 // everywhere, with or without the fonts installed. Also gives exact text widths.
 
 import { readFileSync } from "node:fs";
@@ -7,21 +7,27 @@ import { join } from "node:path";
 import opentype from "opentype.js";
 
 const FILES: Record<string, string> = {
-  "sans-400": "FiraSans-Regular.ttf",
-  "sans-500": "FiraSans-Medium.ttf",
-  "sans-600": "FiraSans-SemiBold.ttf",
-  "sans-700": "FiraSans-Bold.ttf",
-  "mono-400": "FiraCode-Regular.ttf",
-  "mono-500": "FiraCode-Medium.ttf",
+  "sans-400": "IBMPlexSans-Regular.ttf",
+  "sans-500": "IBMPlexSans-Medium.ttf",
+  "sans-600": "IBMPlexSans-SemiBold.ttf",
+  "sans-700": "IBMPlexSans-Bold.ttf",
+  "mono-400": "IBMPlexMono-Regular.ttf",
+  "mono-500": "IBMPlexMono-Medium.ttf",
 };
 const SANS_WEIGHTS = [400, 500, 600, 700];
 const MONO_WEIGHTS = [400, 500];
-// Plain glyphs only: no ligatures (Fira Code would merge e.g. "->" or "www").
+// Plain glyphs only: no ligatures.
 const SHAPING = { kerning: true, features: { liga: false, rlig: false } };
 
 const cache = new Map<string, opentype.Font>();
 let fontDir = "";
 export function useFontDir(dir: string): void { fontDir = dir; }
+// Theme experiments: swap the font files (keys as in FILES, values relative to `dir`).
+export function useFonts(dir: string, files: Record<string, string>): void {
+  fontDir = dir;
+  Object.assign(FILES, files);
+  cache.clear();
+}
 
 function font(mono: boolean, weight: number): opentype.Font {
   const weights = mono ? MONO_WEIGHTS : SANS_WEIGHTS;

@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Homelab",
-    "updated": "2026-11-23 18:41"
+    "updated": "2026-11-25 17:01"
   },
 
   "networks": [
@@ -39,8 +39,13 @@
       "id": "switch",
       "name": "Switch",
       "role": "switch",
-      "icon": "switch",
-      "ports": [{ "id": "1" }, { "id": "2" }, { "id": "3" }, { "id": "4" }, { "id": "5" }]
+      "model": "TP-Link TL-SG2008",
+      "description": "8 × 1G, unmanaged for now",
+      "icon": "tp-link",
+      "ports": [
+        { "id": "1", "speed": "1G" }, { "id": "2", "speed": "1G" }, { "id": "3", "speed": "1G" }, { "id": "4", "speed": "1G" },
+        { "id": "5", "speed": "1G" }, { "id": "6", "speed": "1G" }, { "id": "7", "speed": "1G" }, { "id": "8", "speed": "1G" }
+      ]
     },
     {
       "id": "pve1",
