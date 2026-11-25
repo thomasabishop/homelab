@@ -1,21 +1,19 @@
-// Generates ../homelab.svg and ../services/<service>/readme.md from ../homelab.json.
+// Generates ../homelab.svg (and its PNG) from ../homelab.json.
 // homelab.json is the only source of truth; the layout is a pure function of its
 // contents, so reruns produce identical output.
 //
-//   node generate.ts [input.json] [output.svg]   (readmes go to services/ next to the svg)
+//   node generate.ts [input.json] [output.svg]
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
-import { writeServiceReadmes } from "./services.ts";
 import { measure, outline, useFontDir } from "./fonts.ts";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const INPUT = resolve(process.argv[2] ?? join(ROOT, "..", "homelab.json"));
 const OUTPUT = resolve(process.argv[3] ?? join(ROOT, "..", "homelab.svg"));
-const SERVICES_DIR = join(dirname(OUTPUT), "services");
 const SCHEMA = join(ROOT, "homelab.schema.json");
 const ICON_DIR = join(ROOT, "icons");
 useFontDir(join(ROOT, "fonts"));
@@ -1031,12 +1029,6 @@ const png = pngFor(updated);
 const pngFresh = unchanged && existsSync(png);
 for (const f of readdirSync(OUT_DIR)) if (isOutPng(f) && join(OUT_DIR, f) !== png) unlinkSync(join(OUT_DIR, f));
 const pngWritten = !pngFresh && toPng(OUTPUT, png);
-
-writeServiceReadmes({
-  devices, links, warn, servicesDir: SERVICES_DIR,
-  network: (ip) => networkOf(ip)?.net,
-  dnsFor: (ip) => (dnsFor.get(ip.trim()) ?? []).map((n) => n.net.name),
-});
 
 if (warnings.length) {
   console.log(`⚠ ${warnings.length} issue(s) in ${INPUT}:`);

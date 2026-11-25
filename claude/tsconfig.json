@@ -15,7 +15,6 @@
   },
   "include": [
     "generate.ts",
-    "services.ts",
     "fonts.ts",
     "fit-icons.ts"
   ]

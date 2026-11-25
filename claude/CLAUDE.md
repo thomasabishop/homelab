@@ -1,4 +1,4 @@
-# Homelab diagram and service summaries
+# Homelab diagram
 
 `homelab.json` (in the repo root) describes my homelab and is the only
 source of truth. From it, `claude/generate.ts` produces the outputs, which
@@ -9,7 +9,6 @@ also live in the root:
   of the current diagram, named after its `updated` stamp. The generator
   renders it on every run where the SVG changed or the PNG is missing; there
   is only ever one in the root.
-- `services/<service>/readme.md`: one at-a-glance summary per service
 - `history/homelab_<timestamp>.png`: every earlier version of the diagram,
   named after its `updated` stamp (`-2`, `-3` … for clashes). Older entries
   are `.svg` (from before the switch to PNG). Never edit or delete these.
@@ -29,28 +28,20 @@ Type-check: `npm run check` inside `claude/`.
 After changes, render a preview and look at it, e.g.
 `magick -density 144 homelab.svg <scratchpad>/preview.png`.
 
-## When I say "generate updated diagram and service summaries"
+## When I say "generate updated diagram"
 
 1. Read `homelab.json` and tell me about anything that doesn't make
    sense (invalid JSON, missing names, icon names with no file) before
    changing anything.
 2. Resolve icons (see Style) and run `./claude/generate.sh`.
-3. Report the script's warnings, which icons you added, and which readmes
-   the script reports as **new**. Never delete a `services/` folder the
-   script flags as orphaned; ask me.
+3. Report the script's warnings and which icons you added.
 
-## Service readmes
+## Service READMEs
 
-- One per service in `guests[].services[]`. The folder is the service name
-  lowercased with hyphens (`Pi-hole` → `services/pi-hole/`).
-- Everything between `<!-- generated:start … -->` and `<!-- generated:end -->`
-  is rewritten every run from the JSON: LXC, IP, hostname, network, DNS role,
-  host, path from the internet, ports (with labels). Change the JSON, not
-  that block.
-- Everything else (the "What it does" and "Crib" sections) is written by
-  me, by hand, and kept between runs. Don't write, fill in, research or
-  edit these sections, even when they still say TODO; leave the script's
-  placeholder as it is.
+`services/<service>/README.md` are written and maintained by me, by hand.
+Don't generate, create, fill in or edit them, and don't add a service
+entry or folder under `services/` when a service is added to
+`homelab.json`. The generator doesn't touch `services/`; keep it that way.
 
 ## Style
 
